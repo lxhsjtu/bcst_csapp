@@ -17,6 +17,7 @@
 #include "headers/common.h"
 #include "headers/algorithm.h"
 #include "headers/instruction.h"
+#include "headers/color.h"
 
 void mov_handler             (od_t *src_od, od_t *dst_od) {};
 void push_handler            (od_t *src_od, od_t *dst_od) {};
@@ -30,6 +31,8 @@ void cmp_handler             (od_t *src_od, od_t *dst_od) {};
 void jne_handler             (od_t *src_od, od_t *dst_od) {};
 void jmp_handler             (od_t *src_od, od_t *dst_od) {};
 void lea_handler             (od_t *src_od, od_t *dst_od) {};
+void int_handler             (od_t *src_od, od_t *dst_od) {};
+void nop_handler             (od_t *src_od, od_t *dst_od) {};
 
 void parse_instruction(const char *str, inst_t *inst);
 void parse_operand(const char *str, od_t *od);
@@ -290,14 +293,11 @@ static void TestParsingInstruction()
         assert(instruction_equal(&std_inst[i], &inst_parsed) == 1);
     }
 
-    printf("\033[32;1m\tPass\033[0m\n");
+    printf(GREENSTR("Pass\n"));
 }
 
 int main()
 {
     TestParsingInstruction();
-
-    finally_cleanup();
-
     return 0;
 }

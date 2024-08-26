@@ -24,7 +24,6 @@
 // then the physical space is (1 << 16) = 65536
 // total 16 physical memory
 #define PHYSICAL_MEMORY_SPACE   (65536)
-#define MAX_INDEX_PHYSICAL_PAGE (15)
 #define MAX_NUM_PHYSICAL_PAGE (16)    // 1 + MAX_INDEX_PHYSICAL_PAGE
 
 #define PAGE_TABLE_ENTRY_NUM    (512)
@@ -68,7 +67,7 @@ typedef union
     struct
     {
         uint64_t _present           : 1;
-        uint64_t daddr            : 63;   // disk address
+        uint64_t saddr            : 63;   // swap space address
     };
 } pte123_t; // PGD, PUD, PMD
 
@@ -97,13 +96,19 @@ typedef union
     struct
     {
         uint64_t _present           : 1;    // present = 0
-        uint64_t daddr            : 63;   // disk address
+        uint64_t saddr            : 63;   // swap space address
     };
 } pte4_t;   // PT
 
 /*======================================*/
 /*      memory R/W                      */
 /*======================================*/
+
+// used by instructions: use virtual address
+uint64_t virtual_read_data(uint64_t vaddr);
+void virtual_write_data(uint64_t vaddr, uint64_t data);
+void virtual_read_inst(uint64_t vaddr, char *buf);
+void virtual_write_inst(uint64_t vaddr, const char *str);
 
 // used by instructions: read or write uint64_t to DRAM
 uint64_t cpu_read64bits_dram(uint64_t paddr);

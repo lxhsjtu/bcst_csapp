@@ -19,6 +19,7 @@
 #include "headers/instruction.h"
 #include "headers/interrupt.h"
 #include "headers/process.h"
+#include "headers/color.h"
 
 static void print_register()
 {
@@ -34,7 +35,7 @@ static void print_register()
 static void print_stack()
 {
     int n = 10;    
-    uint64_t *high = (uint64_t*)&pm[va2pa(cpu_reg.rsp)];
+    uint64_t *high = (uint64_t*)&pm[va2pa(cpu_reg.rsp, 0)];
     high = &high[n];
     uint64_t va = cpu_reg.rsp + n * 8;
 
@@ -82,7 +83,7 @@ static void TestSyscallPrintHelloWorld()
     // copy to physical memory
     for (int i = 0; i < 12; ++ i)
     {
-        cpu_writeinst_dram(va2pa(i * 0x40 + 0x00400000), assembly[i]);
+        virtual_write_inst(i * 0x40 + 0x00400000, assembly[i]);
     }
     cpu_pc.rip = 0x00400000;
 
@@ -91,10 +92,7 @@ static void TestSyscallPrintHelloWorld()
     uint64_t k_temp = (uint64_t)&kstack_buf[8192];
 
     kstack_t *kstack = (kstack_t *)(((k_temp >> 13) << 13) + KERNEL_STACK_SIZE);
-    tss_s0_t tss;
-
-    tss.ESP0 = (uint64_t)kstack + KERNEL_STACK_SIZE;
-    cpu_task_register = (uint64_t)&tss;
+    tr_global_tss.ESP0 = (uint64_t)kstack + KERNEL_STACK_SIZE;
 
     pcb_t curr;
     curr.prev = &curr;
@@ -117,7 +115,7 @@ static void TestSyscallPrintHelloWorld()
         time ++;
     }
 
-    printf("\033[32;1m\tPass\033[0m\n");
+    printf(GREENSTR("Pass\n"));
 }
 
 static void TestAddFunctionCallAndComputation()
@@ -134,11 +132,11 @@ static void TestAddFunctionCallAndComputation()
     cpu_reg.rbp = 0x7ffffffee110;
     cpu_reg.rsp = 0x7ffffffee0f0;
 
-    cpu_write64bits_dram(va2pa(0x7ffffffee110), 0x0000000000000000);    // rbp
-    cpu_write64bits_dram(va2pa(0x7ffffffee108), 0x0000000000000000);
-    cpu_write64bits_dram(va2pa(0x7ffffffee100), 0x0000000012340000);
-    cpu_write64bits_dram(va2pa(0x7ffffffee0f8), 0x000000000000abcd);
-    cpu_write64bits_dram(va2pa(0x7ffffffee0f0), 0x0000000000000000);    // rsp
+    virtual_write_data(0x7ffffffee110, 0x0000000000000000);    // rbp
+    virtual_write_data(0x7ffffffee108, 0x0000000000000000);
+    virtual_write_data(0x7ffffffee100, 0x0000000012340000);
+    virtual_write_data(0x7ffffffee0f8, 0x000000000000abcd);
+    virtual_write_data(0x7ffffffee0f0, 0x0000000000000000);    // rsp
 
     // 2 before call
     // 3 after call before push
@@ -167,7 +165,7 @@ static void TestAddFunctionCallAndComputation()
     // copy to physical memory
     for (int i = 0; i < 15; ++ i)
     {
-        cpu_writeinst_dram(va2pa(i * 0x40 + 0x00400000), assembly[i]);
+        virtual_write_inst(i * 0x40 + 0x00400000, assembly[i]);
     }
     cpu_pc.rip = MAX_INSTRUCTION_CHAR * sizeof(char) * 11 + 0x00400000;
 
@@ -193,13 +191,13 @@ static void TestAddFunctionCallAndComputation()
     assert(cpu_reg.rbp == 0x7ffffffee110);
     assert(cpu_reg.rsp == 0x7ffffffee0f0);
 
-    assert(cpu_read64bits_dram(va2pa(0x7ffffffee110)) == 0x0000000000000000); // rbp
-    assert(cpu_read64bits_dram(va2pa(0x7ffffffee108)) == 0x000000001234abcd);
-    assert(cpu_read64bits_dram(va2pa(0x7ffffffee100)) == 0x0000000012340000);
-    assert(cpu_read64bits_dram(va2pa(0x7ffffffee0f8)) == 0x000000000000abcd);
-    assert(cpu_read64bits_dram(va2pa(0x7ffffffee0f0)) == 0x0000000000000000); // rsp
+    assert(virtual_read_data(0x7ffffffee110) == 0x0000000000000000); // rbp
+    assert(virtual_read_data(0x7ffffffee108) == 0x000000001234abcd);
+    assert(virtual_read_data(0x7ffffffee100) == 0x0000000012340000);
+    assert(virtual_read_data(0x7ffffffee0f8) == 0x000000000000abcd);
+    assert(virtual_read_data(0x7ffffffee0f0) == 0x0000000000000000); // rsp
 
-    printf("\033[32;1m\tPass\033[0m\n");
+    printf(GREENSTR("Pass\n"));
 }
 
 static void TestSumRecursiveCondition()
@@ -218,9 +216,9 @@ static void TestSumRecursiveCondition()
 
     cpu_flags.__flags_value = 0;
 
-    cpu_write64bits_dram(va2pa(0x7ffffffee230), 0x0000000008000650);    // rbp
-    cpu_write64bits_dram(va2pa(0x7ffffffee228), 0x0000000000000000);
-    cpu_write64bits_dram(va2pa(0x7ffffffee220), 0x00007ffffffee310);    // rsp
+    virtual_write_data(0x7ffffffee230, 0x0000000008000650);    // rbp
+    virtual_write_data(0x7ffffffee228, 0x0000000000000000);
+    virtual_write_data(0x7ffffffee220, 0x00007ffffffee310);    // rsp
 
     char assembly[19][MAX_INSTRUCTION_CHAR] = {
         "push   %rbp",              // 0
@@ -247,7 +245,7 @@ static void TestSumRecursiveCondition()
     // copy to physical memory
     for (int i = 0; i < 19; ++ i)
     {
-        cpu_writeinst_dram(va2pa(i * 0x40 + 0x00400000), assembly[i]);
+        virtual_write_inst(i * 0x40 + 0x00400000, assembly[i]);
     }
     cpu_pc.rip = MAX_INSTRUCTION_CHAR * sizeof(char) * 16 + 0x00400000;
 
@@ -273,20 +271,17 @@ static void TestSumRecursiveCondition()
     assert(cpu_reg.rdi == 0x0);
     assert(cpu_reg.rbp == 0x7ffffffee230);
     assert(cpu_reg.rsp == 0x7ffffffee220);
-    assert(cpu_read64bits_dram(va2pa(0x7ffffffee230)) == 0x0000000008000650); // rbp
-    assert(cpu_read64bits_dram(va2pa(0x7ffffffee228)) == 0x0000000000000006);
-    assert(cpu_read64bits_dram(va2pa(0x7ffffffee220)) == 0x00007ffffffee310); // rsp
+    assert(virtual_read_data(0x7ffffffee230)== 0x0000000008000650); // rbp
+    assert(virtual_read_data(0x7ffffffee228)== 0x0000000000000006);
+    assert(virtual_read_data(0x7ffffffee220)== 0x00007ffffffee310); // rsp
 
-    printf("\033[32;1m\tPass\033[0m\n");
+    printf(GREENSTR("Pass\n"));
 }
 
 int main()
 {
-    //TestAddFunctionCallAndComputation();
-    //TestSumRecursiveCondition();
-
+    TestAddFunctionCallAndComputation();
+    TestSumRecursiveCondition();
     TestSyscallPrintHelloWorld();
-
-    finally_cleanup();
     return 0;
 }

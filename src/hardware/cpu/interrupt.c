@@ -16,6 +16,7 @@
 #include "headers/cpu.h"
 #include "headers/interrupt.h"
 #include "headers/process.h"
+#include "headers/color.h"
 #include "headers/address.h"
 
 typedef void (*interrupt_handler_t)();
@@ -46,8 +47,6 @@ void idt_init()
     idt[0x80].handler = syscall_handler;
     idt[0x81].handler = timer_handler;
 }
-
-static void print_kstack();
 
 // get the high vaddr of kstack from TSS
 uint64_t get_kstack_top_TSS()
@@ -284,7 +283,7 @@ void interrupt_return_stack_switching()
 
 void timer_handler()
 {
-    printf("\033[32;1mTimer interrupt to invoke OS scheduling\033[0m\n");
+    printf("Timer interrupt to invoke OS scheduling\n");
     software_push_userframe();
     os_schedule();
     /* ================================= */
@@ -303,16 +302,17 @@ void timer_handler()
 
 void pagefault_handler()
 {
-    printf("\033[32;1mPage fault handling\033[0m\n");
+    printf(GREENSTR("Page fault handling\n"));
 
     software_push_userframe();
     fix_pagefault();
     os_schedule();
+    software_pop_userframe();
 }
 
 void syscall_handler()
 {
-    printf("\033[32;1mInvoking system call [%ld]\033[0m\n", cpu_reg.rax);
+    printf(GREENSTR("Invoking system call [%ld]\n"), cpu_reg.rax);
 
     // push user general registers to kernel stack
     // to save the context of user thread
@@ -338,9 +338,9 @@ void syscall_handler()
 
 // Helper functions
 
-static void print_kstack()
+static void print_kstack(pcb_t *p)
 {
-    uint64_t kstack_bottom_vaddr = get_kstack_RSP();
+    uint64_t kstack_bottom_vaddr = (uint64_t)p->kstack;
     uint64_t kstack_top_vaddr = kstack_bottom_vaddr + KERNEL_STACK_SIZE;
     
     uint64_t tfa = kstack_top_vaddr - sizeof(trapframe_t);
@@ -371,12 +371,12 @@ static void print_kstack()
             if (tfa <= base)
             {
                 // print trap frame green
-                printf("\033[32;1m%16lx  \033[0m", val64);
+                printf(GREENSTR("%16lx  "), val64);
             }
             else if (ufa <= base)
             {
                 // print user frame yellow
-                printf("\033[33;1m%16lx  \033[0m", val64);
+                printf(YELLOWSTR("%16lx  "), val64);
             }
             else
             {

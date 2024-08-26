@@ -20,11 +20,16 @@
 #include "headers/instruction.h"
 #include "headers/interrupt.h"
 #include "headers/process.h"
+#include "headers/color.h"
 
-static void load_code(int pid, address_t *code_addr)
+void map_pte4(pte4_t *pte, uint64_t ppn);
+void unmapall_pte4(uint64_t ppn);
+void page_map_init();
+
+static void load_code_physically(int pid, address_t *code_addr)
 {
     /* this is a while loop like:
-     * while(1) { printf("%d\n", pid); }
+     * while(1) { printf("p%d\n", pid); }
      */
 
     // code to be copied to physical page
@@ -43,7 +48,7 @@ static void load_code(int pid, address_t *code_addr)
     // the correct execution is:
     // 000, 040, 080, 0c0, [100, 140, 180, 1c0], [100, 140, 180, 1c0], [100, 140, 180, 1c0], ...
     code[0][13] = (uint8_t)pid + '0';
-    uint8_t *start = &pm[(2 * pid - 1) * PAGE_SIZE + code_addr->vpo];
+    uint8_t *start = &pm[(pid - 1) * PAGE_SIZE + code_addr->vpo];
     memcpy((char *)start, &code, sizeof(char) * 8 * MAX_INSTRUCTION_CHAR);
 }
 
@@ -66,6 +71,8 @@ static void link_page_table(pte123_t *pgd, pte123_t *pud, pte123_t *pmd, pte4_t 
 
     (&(pt[vpn4]))->ppn = ppn;
     (&(pt[vpn4]))->present = 1;
+
+    map_pte4(&(pt[vpn4]), ppn);
 }
 
 static void TestContextSwitching()
@@ -102,65 +109,44 @@ static void TestContextSwitching()
     p2.mm.pgd = &p2_pgd[0];
     p3.mm.pgd = &p3_pgd[0];
 
-    // p1's page table
+    page_map_init();
 
-    // p1's stack page
-    pte123_t p1_pud_stack[512];
-    pte123_t p1_pmd_stack[512];
-    pte4_t p1_pt_stack[512];
-    link_page_table(&p1_pgd[0], &p1_pud_stack[0], &p1_pmd_stack[0], &p1_pt_stack[0], 0, &stack_addr);
+    // please think why we do not need to map the stack page directly?
+    // how will page fault handling help us with this?
 
     // p1's code page
-    pte123_t p1_pud_code[512];
-    pte123_t p1_pmd_code[512];
+    pte123_t p1_pud[512];
+    pte123_t p1_pmd[512];
     pte4_t p1_pt_code[512];
-    link_page_table(&p1_pgd[0], &p1_pud_code[0], &p1_pmd_code[0], &p1_pt_code[0], 1, &code_addr);
-    load_code(1, &code_addr);
+    link_page_table(&p1_pgd[0], &p1_pud[0], &p1_pmd[0], &p1_pt_code[0], 0, &code_addr);
+    load_code_physically(1, &code_addr);
 
-    // p2's page table
-
-    // p2's stack page
-    pte123_t p2_pud_stack[512];
-    pte123_t p2_pmd_stack[512];
-    pte4_t p2_pt_stack[512];
-    link_page_table(&p2_pgd[0], &p2_pud_stack[0], &p2_pmd_stack[0], &p2_pt_stack[0], 2, &stack_addr);
-    
     // p2's code page
-    pte123_t p2_pud_code[512];
-    pte123_t p2_pmd_code[512];
+    pte123_t p2_pud[512];
+    pte123_t p2_pmd[512];
     pte4_t p2_pt_code[512];
-    link_page_table(&p2_pgd[0], &p2_pud_code[0], &p2_pmd_code[0], &p2_pt_code[0], 3, &code_addr);
-    load_code(2, &code_addr);
-    
-    // p3's page table
+    link_page_table(&p2_pgd[0], &p2_pud[0], &p2_pmd[0], &p2_pt_code[0], 1, &code_addr);
+    load_code_physically(2, &code_addr);
 
-    // p3's stack page
-    pte123_t p3_pud_stack[512];
-    pte123_t p3_pmd_stack[512];
-    pte4_t p3_pt_stack[512];
-    link_page_table(&p3_pgd[0], &p3_pud_stack[0], &p3_pmd_stack[0], &p3_pt_stack[0], 4, &stack_addr);
-    
     // p3's code page
-    pte123_t p3_pud_code[512];
-    pte123_t p3_pmd_code[512];
+    pte123_t p3_pud[512];
+    pte123_t p3_pmd[512];
     pte4_t p3_pt_code[512];
-    link_page_table(&p3_pgd[0], &p3_pud_code[0], &p3_pmd_code[0], &p3_pt_code[0], 5, &code_addr);
-    load_code(3, &code_addr);
+    link_page_table(&p3_pgd[0], &p3_pud[0], &p3_pmd[0], &p3_pt_code[0], 2, &code_addr);
+    load_code_physically(3, &code_addr);
 
     // create kernel stacks
-    uint8_t stack_buf[8192 * 4];
-
-    uint64_t p1_stack_bottom = (((uint64_t)&stack_buf[8192]) >> 13) << 13;
-    uint64_t p2_stack_bottom = p1_stack_bottom + KERNEL_STACK_SIZE;
-    uint64_t p3_stack_bottom = p2_stack_bottom + KERNEL_STACK_SIZE;
-
-    p1.kstack = (kstack_t *)p1_stack_bottom;
-    p2.kstack = (kstack_t *)p2_stack_bottom;
-    p3.kstack = (kstack_t *)p3_stack_bottom;
+    p1.kstack = aligned_alloc(KERNEL_STACK_SIZE, KERNEL_STACK_SIZE);
+    p2.kstack = aligned_alloc(KERNEL_STACK_SIZE, KERNEL_STACK_SIZE);
+    p3.kstack = aligned_alloc(KERNEL_STACK_SIZE, KERNEL_STACK_SIZE);
 
     p1.kstack->threadinfo.pcb = &p1;
     p2.kstack->threadinfo.pcb = &p2;
     p3.kstack->threadinfo.pcb = &p3;
+
+    uint64_t p1_stack_bottom = (uint64_t)p1.kstack;
+    uint64_t p2_stack_bottom = (uint64_t)p2.kstack;
+    uint64_t p3_stack_bottom = (uint64_t)p3.kstack;
 
     // create trap frames for p2, p3
     trapframe_t tf = {
@@ -200,13 +186,11 @@ static void TestContextSwitching()
         time ++;
     }
 
-    printf("\033[32;1m\tPass\033[0m\n");
+    printf(GREENSTR("Pass\n"));
 }
 
 int main()
-{
+{    
     TestContextSwitching();
-
-    finally_cleanup();
     return 0;
 }
